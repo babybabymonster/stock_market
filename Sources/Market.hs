@@ -6,7 +6,7 @@ import Types
 regCommission :: Double
 regCommission = 0.0011
 
--- Commission for a short sell order: 0.11%
+-- Commission for a short sell order: 0.75%
 ssCommission :: Double
 ssCommission = 0.0075
 
@@ -19,7 +19,7 @@ cashRate :: Double
 cashRate = 0.03
 
 -- One day of order execution
--- Confidence: High
+--
 -- | executeOrders: Extend short position.
 -- >>> order=[(Order "TLS" (-3000))]
 -- >>> portfolio=(500000.0, [("TLS", (-3000))])
