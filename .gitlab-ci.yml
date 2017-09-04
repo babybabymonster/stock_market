@@ -1,0 +1,27 @@
+image: schteeben/anu:ass02
+
+stages:
+    - build
+    - test
+    - deploy
+    
+Compilation:
+    stage: build
+    tags:
+        - comp1100
+    script:
+        - ./compile_everything
+    
+Doctest:
+    stage: test
+    tags:
+        - comp1100
+    script:
+        - cd Sources && doctest *.hs
+
+# Submit To Server:
+#     stage: deploy
+#     tags:
+#         - comp1100
+#     script:
+#         - doSomething.exe
