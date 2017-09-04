@@ -19,9 +19,9 @@ Doctest:
     script:
         - cd Sources && doctest *.hs
 
-# Submit To Server:
-#     stage: deploy
-#     tags:
-#         - comp1100
-#     script:
-#         - doSomething.exe
+Submit To Server:
+    stage: deploy
+    tags:
+        - comp1100
+    script:
+        - curl -X POST -F token=7823f2bff983b2142b2d62a7edb310 -F ref=REF_NAME https://gitlab.cecs.anu.edu.au/api/v4/projects/22660/trigger/pipeline
