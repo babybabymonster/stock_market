@@ -19,6 +19,20 @@ Doctest:
     script:
         - cd Sources && doctest *.hs
 
+Runtime:
+    stage: test
+    tags:
+        - comp1100
+    script:
+        - ./compile_everything && ./Trading Data/
+        
+Pre-Simulate:
+    stage: test
+    tags:
+        - comp1100
+    script:
+        - sh /Ass02/WebTest.sh
+
 Submit To Server:
     stage: deploy
     tags:
