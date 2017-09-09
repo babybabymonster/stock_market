@@ -104,7 +104,7 @@ executeOrders p@(cash, holdings) histories orders = case orders of
             cost             = fromIntegral q * price
             regularSellOrder = Order s (- quantityHeld)
             shortSellOrder   = Order s (quantityHeld + q)
-            price            = getStockPrice s histories
+            price            =  getStockPrice s histories
             updatedHoldings  = updateHoldings (s, q) holdings
             currentWealth    = calculateWealth p histories
              
