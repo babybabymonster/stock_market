@@ -10,7 +10,7 @@ makeOrders :: Portfolio -> [StockHistory] -> [Order]
 makeOrders (cash, holdings) history =
     case history of
           [] -> []
-          (s,p):sps -> case length p <= 31 of
+          (s,p):sps -> case length p <= 101 of
                 True -> []
                 False -> case quantityHeld of
                       0 -> case lineIsIncreasing selectedMinPoints of -- the quantity of s is 0, then check if it is worth buying.
@@ -27,25 +27,16 @@ makeOrders (cash, holdings) history =
                                   True -> [Order s (-quantityHeld)] ++
                                             makeOrders (cash + (fromInteger quantityHeld)*(head p), updateHoldings (s, -quantityHeld) holdings) sps
                                   False -> []
-                                    -- False -> case buyPoint of
-                                      --      True -> [Order s (-quantityHeld)] ++
-                                        --            makeOrders (cash + (fromInteger quantityHeld) * (head p), updateHoldings (s, -quantityHeld) holdings) sps
-                                         --   False -> [Order s quantityHeld] ++
-                                          --  makeOrders (cash - (fromInteger quantityHeld) * (head p), updateHoldings (s, quantityHeld) holdings) sps
                       where
                                         --shortSellAmount = floor(0.01 * cash / head p)
-                                        --sellPoint = predictPrice > currentPrice
                       quantityHeld
                         | s `notElem` map fst holdings = 0
                         | otherwise = fromIntegral (snd $ head $ filter (\z -> fst z == s) holdings)
-                                        --qHeldyesterday
-                                        --    | s `notElem` map fst holdings
-                                        -- [pn,pn-1,...,p2,p1]
                       historyPricesOfS = snd $ head $ filter(\a -> fst a == s) history
                                         -- [(1,p1),(2,p2),...,(n-1,pn-1),(n,pn)]
                       listOfPoints = zip [1..4502] (reverse historyPricesOfS)
                                         -- [(n-1,pn-1),...,(n-29, pn-29)]
-                      selectThirtyDays = tail $ take 31 (reverse listOfPoints)
+                      selectThirtyDays = tail $ take 101 (reverse listOfPoints)
                       selectedMaxPoints = selectMaxPoints selectThirtyDays
                       selectedMinPoints = selectMinPoints selectThirtyDays
                                         -- pn
@@ -54,10 +45,16 @@ makeOrders (cash, holdings) history =
                       sellPointIncrease = predictPrice <= currentPrice
                       sellPointDecrease = 0.9 * predictPrice >= currentPrice
                       predictPrice = predict (fromIntegral $ length $ historyPricesOfS) selectThirtyDays
-                                        --buyPoint = predictPrice < currentPrice
+                      currentWealth = calculateWealth (cash, holdings) history
 
 
+calculateWealth :: Portfolio -> [StockHistory] -> Cash
+calculateWealth (cash, stock) his = cash + sum (map currentValue stock)
+    where currentValue :: (Stock, Quantity) -> Cash
+          currentValue (sname, q) = getStockPrice sname his * fromIntegral q
 
+getStockPrice :: Stock -> [StockHistory] -> Price
+getStockPrice stock shis = head $ snd $ head $ filter (\z -> fst z == stock) shis
 -- predict current price smaller than actual current price
 --overvalued :: [StockHistory] -> PLine -> Bool
 --overvalued sh Line ck cb = predictPrice < currentPrice

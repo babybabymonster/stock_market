@@ -18,6 +18,9 @@ loanRate = - 0.055
 cashRate :: Double
 cashRate = 0.03
 
+marketCap :: Integer
+marketCap = 50000000000
+
 -- One day of order execution
 --
 -- | executeOrders: Extend short position.
@@ -84,12 +87,16 @@ executeOrders p@(cash, holdings) histories orders = case orders of
     Order s q : xs
         | s == "XJO"
           || invalidShort
-          || invalidLong -> skipOrder
+          || invalidLong
+          || buyingMarket
+          || cash < (-500000)
+                         -> skipOrder
         | isShortingReg  -> executeOrders (cash - cost + commission ssCommission cost, updatedHoldings) histories xs
         | isShortingHeld -> executeOrders p histories $ regularSellOrder : shortSellOrder : xs
         | isSelling      -> executeOrders (cash - cost + commission regCommission cost, updatedHoldings) histories xs
         | otherwise      -> executeOrders (cash - cost - commission regCommission cost, updatedHoldings) histories xs
         where
+            buyingMarket     = fromIntegral (q + quantityHeld) > ((fromIntegral marketCap) / price)
             isShortingHeld   = isSelling && abs q > quantityHeld
             isSelling        = q < 0
             isShortingReg    = isSelling && quantityHeld <= 0
