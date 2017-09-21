@@ -67,70 +67,72 @@ prop_findMinPoint fmlist = (snd $ findMinPoint fmlist) == (head $ sort $ map snd
 makeOrders :: Portfolio -> [StockHistory] -> [Order]
 makeOrders port@(cash, holdings) history = case history of
     [] -> []
-    (s,p):sps -> case length p <= 180 of
-        True -> []
-        -- check the trend of s stock in 30 days, using the minimum price every 5 days
-        -- instead of average price every 5 days is to make sure the general trend of
-        -- this stock in 30 days is increasing.
-        False -> case k30Min > 0 of
-            True
-                | k60 > 0 -> case k180 > 0 of
-                    -- s stock keeps increasing in 180 days, then it is relatively stable,
-                    -- it is safe to invest.
-                    True -> case
-                     -- find a relatively lower price to buy.
-                        minPriceIn5days >= currentPrice of
-                        True-> myOrder $ 2 * buyQuantity
-                        False
-                            | quantityHeld > 0 -> case
-                                  -- find a relatively higher price to sell
-                                   maxPriceIn5days <= currentPrice of
-                                   True -> myOrder sellQuantity
-                                   False -> myOrder buyQuantity
-                            | otherwise -> skipThisStock
-                    -- s stock is increasing in 30 and 60 days, but not in 180 days, this stock
-                    -- starts to climb back.
-                    False -> case minPriceIn5days >= currentPrice of
-                        True -> myOrder buyQuantity
-                        False
-                            | maxPriceIn5days < currentPrice -> myOrder sellQuantity
-                            | otherwise -> skipThisStock
-                -- k60 <= 0, the stock starts to climb back;
-                -- check the slope of recent 10 days to check whether it is safe to buy.
-                | otherwise -> case k10 > 0 of
-                        True
-                            | 1.1 * minPriceIn5days >= currentPrice -> myOrder buyQuantity
-                            | otherwise -> skipThisStock
-                        False -> skipThisStock
-            -- k30Min < 0, then use maximum price every 5 days,
-            -- if this regression line is decreasing, then this stock must decrease.
-            False -> case k30Max > 0 of
-                        True
-                            | k10 > 0 -> myOrder buyQuantity
-                            | otherwise -> case quantityHeld > 0 of
-                                True -> myOrder (-quantityHeld)
-                                False -> skipThisStock
-                        -- k30Max < 0, the prices in 30 days is decreasing,
-                        -- check if it is decreasing in 180 days, if so, we know the price
-                        -- are highly likely to continue decrease in the future,
-                        -- thus use short sell.
-                        False -> case k180 < 0 of
-                                -- use short sell
-                            True
-                                | 0.9 * minPriceIn5days >= currentPrice -> myOrder sellQuantity
-                                | otherwise -> case quantityHeld < 0 of
-                                            True -> myOrder quantityHeld
-                                            False -> skipThisStock
-                                -- if we still have this stock, then find a
-                                -- relatively higher price to sell.
-                                -- if not, then skip it.
-                            False -> case quantityHeld >= 0 of
+    (s,p):sps -> case quantityHeld < 0 of
+        True
+            | 0.9 * minPriceIn5days >= currentPrice -> myOrder (-quantityHeld)
+            | otherwise -> skipThisStock
+        False -> case length p <= 180 of
+                True -> []
+                -- check the trend of s stock in 30 days, using the minimum price every 5 days
+                -- instead of average price every 5 days is to make sure the general trend of
+                -- this stock in 30 days is increasing.
+                False -> case k30Min > 0 of
+                    True
+                        | k60 > 0 -> case k180 > 0 of
+                            -- s stock keeps increasing in 180 days, then it is relatively stable,
+                            -- it is safe to invest.
+                            True -> case
+                             -- find a relatively lower price to buy.
+                                minPriceIn5days >= currentPrice of
+                                True-> myOrder $ 2 * buyQuantity
+                                False
+                                    | quantityHeld > 0 -> case
+                                          -- find a relatively higher price to sell
+                                           maxPriceIn5days <= currentPrice of
+                                           True -> myOrder sellQuantity
+                                           False -> myOrder buyQuantity
+                                    | otherwise -> skipThisStock
+                            -- s stock is increasing in 30 and 60 days, but not in 180 days, this stock
+                            -- starts to climb back.
+                            False -> case minPriceIn5days >= currentPrice of
+                                True -> myOrder buyQuantity
+                                False
+                                    | maxPriceIn5days < currentPrice -> myOrder sellQuantity
+                                    | otherwise -> skipThisStock
+                        -- k60 <= 0, the stock starts to climb back;
+                        -- check the slope of recent 10 days to check whether it is safe to buy.
+                        | otherwise -> case k10 > 0 of
                                 True
-                                    | 0.9 * predictPrice <= currentPrice -> myOrder sellQuantity
+                                    | 1.1 * minPriceIn5days >= currentPrice -> myOrder buyQuantity
                                     | otherwise -> skipThisStock
                                 False -> skipThisStock
+                    -- k30Min < 0, then use maximum price every 5 days,
+                    -- if this regression line is decreasing, then this stock must decrease.
+                    False -> case k30Max > 0 of
+                                True
+                                    | k10 > 0 -> myOrder buyQuantity
+                                    | otherwise -> case quantityHeld > 0 of
+                                        True -> myOrder (-quantityHeld)
+                                        False -> skipThisStock
+                                -- k30Max < 0, the prices in 30 days is decreasing,
+                                -- check if it is decreasing in 180 days, if so, we know the price
+                                -- are highly likely to continue decrease in the future,
+                                -- thus use short sell.
+                                False -> case k180 < 0 of
+                                        -- use short sell
+                                    True
+                                        | 0.9 * maxPriceIn5days <= currentPrice -> myOrder sellQuantity
+                                        | otherwise -> skipThisStock
+                                        -- if we still have this stock, then find a
+                                        -- relatively higher price to sell.
+                                        -- if not, then skip it.
+                                    False -> case quantityHeld >= 0 of
+                                        True
+                                            | 0.9 * predictPrice <= currentPrice -> myOrder sellQuantity
+                                            | otherwise -> skipThisStock
+                                        False -> skipThisStock
 
-            where quantityHeld
+        where     quantityHeld
                        | s `notElem` map fst holdings = 0
                        | otherwise = fromIntegral (snd $ head $ filter (\z -> fst z == s) holdings)
                   currentPrice = head $ p
