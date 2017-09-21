@@ -8,34 +8,43 @@ import Data.List
 -- prop> prop_findMaxPoint
 -- prop> prop_findMinPoint
 
--- | doctest
+-- | selectMaxPoints
 -- >>> selectMaxPoints [(2,4),(0,100),(200,0),(-10,-300)]
 -- [(0,100)]
 --
+-- | selectMinPoints
 -- >>> selectMinPoints [(1,29),(-30,300),(200,0),(-10,-490)]
 -- [(-10,-490)]
 --
+-- | predict
 -- >>> predict 2 [(1.62,49.99),(1.54,43.12),(1.32,23.11),(1.35,41.82)]
 -- 81.61918239493019
 --
+-- | calSlopOfLine
 -- >>> calSlopeOfLine [(1.47,52.21),(1.50,53.12),(1.52,54.48),(1.55,55.84)]
 -- 47.165266231662734
 --
+-- | calculateB
 -- >>> calculateB [(1.62,47.23),(2.14,42.13),(1.82,28.11),(1.95,43.14)]
 -- -29.89201019091216
 --
+-- | staDeviation
 -- >>> staDeviation [-9,0,27.9,-19.2,19.2,30]
 -- 7.634270320949693
 --
+-- | sdOfPoints
 -- >>> sdOfPoints [(89.0,100),(101,22),(-70,28),(0,-100)]
 -- (34.8407089480108,35.91918011313733)
 --
+-- | correlation
 -- >>> correlation [(1.47,52.21),(1.50,53.12),(1.52,54.48),(1.55,55.84)]
 -- 0.9999760008749387
 --
+-- | mean
 -- >>> mean [4.5,0,-100,300.9]
 -- 51.349999999999994
 --
+-- | meanOfPoints
 -- >>> meanOfPoints [(99.8, 0),(122,9),(-20,1),(-2,-9)]
 -- (49.95,0.25)
 
@@ -56,7 +65,7 @@ prop_findMinPoint fmlist = (snd $ findMinPoint fmlist) == (head $ sort $ map snd
 --
 
 makeOrders :: Portfolio -> [StockHistory] -> [Order]
-makeOrders (cash, holdings) history = case history of
+makeOrders port@(cash, holdings) history = case history of
     [] -> []
     (s,p):sps -> case length p <= 180 of
         True -> []
@@ -78,29 +87,29 @@ makeOrders (cash, holdings) history = case history of
                                    maxPriceIn5days <= currentPrice of
                                    True -> myOrder sellQuantity
                                    False -> myOrder buyQuantity
-                            | otherwise -> []
+                            | otherwise -> skipThisStock
                     -- s stock is increasing in 30 and 60 days, but not in 180 days, this stock
                     -- starts to climb back.
                     False -> case minPriceIn5days >= currentPrice of
                         True -> myOrder buyQuantity
                         False
                             | maxPriceIn5days < currentPrice -> myOrder sellQuantity
-                            | otherwise -> []
+                            | otherwise -> skipThisStock
                 -- k60 <= 0, the stock starts to climb back;
                 -- check the slope of recent 10 days to check whether it is safe to buy.
                 | otherwise -> case k10 > 0 of
                         True
                             | 1.1 * minPriceIn5days >= currentPrice -> myOrder buyQuantity
-                            | otherwise -> []
-                        False -> []
+                            | otherwise -> skipThisStock
+                        False -> skipThisStock
             -- k30Min < 0, then use maximum price every 5 days,
             -- if this regression line is decreasing, then this stock must decrease.
             False -> case k30Max > 0 of
                         True
                             | k10 > 0 -> myOrder buyQuantity
                             | otherwise -> case quantityHeld > 0 of
-                                True -> myOrder quantityHeld
-                                False -> []
+                                True -> myOrder (-quantityHeld)
+                                False -> skipThisStock
                         -- k30Max < 0, the prices in 30 days is decreasing,
                         -- check if it is decreasing in 180 days, if so, we know the price
                         -- are highly likely to continue decrease in the future,
@@ -111,15 +120,15 @@ makeOrders (cash, holdings) history = case history of
                                 | 0.9 * minPriceIn5days >= currentPrice -> myOrder sellQuantity
                                 | otherwise -> case quantityHeld < 0 of
                                             True -> myOrder quantityHeld
-                                            False -> []
+                                            False -> skipThisStock
                                 -- if we still have this stock, then find a
                                 -- relatively higher price to sell.
                                 -- if not, then skip it.
                             False -> case quantityHeld >= 0 of
                                 True
                                     | 0.9 * predictPrice <= currentPrice -> myOrder sellQuantity
-                                    | otherwise -> []
-                                False -> []
+                                    | otherwise -> skipThisStock
+                                False -> skipThisStock
 
             where quantityHeld
                        | s `notElem` map fst holdings = 0
@@ -152,6 +161,7 @@ makeOrders (cash, holdings) history = case history of
                   updateCash q = cash + (fromInteger q) * currentPrice
                   -- makeOrders.
                   myOrder qty = [Order s qty] ++ makeOrders (updateCash qty, updateHoldings (s, qty) holdings) sps
+                  skipThisStock = [] ++ makeOrders port sps
 
 
 -- Helper Functions
@@ -230,4 +240,6 @@ correlation list = xy / sqrt (xx * yy)
         where xy = sum (map (\z -> fst z * snd z) list)
               xx = sum (map (\z -> fst z * fst z) list)
               yy = sum (map (\z -> snd z * snd z) list)
+
+
 

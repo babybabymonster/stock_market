@@ -36,5 +36,5 @@ unfoldPrices :: [Price] -> [[Price]]
 unfoldPrices prices = reverse $ foldr (\p up -> case up of
                                                   [] -> [p]:up 
                                                   _ -> (p:head up):up 
-                                     ) [] prices
+                                      ) [] prices
      
