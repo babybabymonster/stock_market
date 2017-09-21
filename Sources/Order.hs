@@ -9,71 +9,86 @@ import Types
 makeOrders :: Portfolio -> [StockHistory] -> [Order]
 makeOrders (cash, holdings) history = case history of
     [] -> []
-    (s,p):sps -> case length p <= 31 of
+    (s,p):sps -> case length p <= 180 of
         True -> []
-        False -- deal with shortSell situation fist to lower the risk of shortSelling.
-            | quantityHeld < 0 -> [Order s (-quantityHeld)] ++ makeOrders (cash - (fromInteger quantityHeld) * currentPrice, updateHoldings (s, (-quantityHeld)) holdings) sps
-              -- if correlation of selected points > 0, that means the line is increasing;
-            | otherwise -> case (correlation selectedMinPoints30) >= 0.1 && (correlation selectedMinPoints100) > 0 of
-                True ->  case (calSlopeOfLine average180) > 0 of
+        False -> case k30Min > 0 of
+            True
+                | k60 > 0 -> case k180 > 0 of
+                    True -> case
+                     -- find a relative lower price to buy.
+                        minPriceIn5days >= currentPrice of
+                        True-> myOrder $ 2 * buyQuantity
                         False
-                            | underValue -> [Order s buyQuantity] ++ makeOrders (cash - (fromInteger buyQuantity) * currentPrice, updateHoldings (s, buyQuantity) holdings) sps
-                            | overValue -> [Order s (-sellQuantity)] ++ makeOrders (cash - (fromInteger (-sellQuantity))*currentPrice, updateHoldings (s, (-sellQuantity)) holdings) sps
+                            | quantityHeld > 0 -> case
+                                  -- find a relative higher price to sell
+                                   maxPriceIn5days <= currentPrice of
+                                   True -> myOrder sellQuantity
+                                   False -> myOrder buyQuantity
                             | otherwise -> []
+                    False -> case minPriceIn5days >= currentPrice of
+                        True -> myOrder buyQuantity
+                        False
+                            | maxPriceIn5days < currentPrice -> myOrder sellQuantity
+                            | otherwise -> []
+                | otherwise -> case k10 > 0 of
                         True
-                            | currentPrice >= 1.2 * maxPriceIn300Days -> [Order s (-quantityHeld)] ++ makeOrders (cash + (fromInteger quantityHeld) * currentPrice, updateHoldings (s, (-quantityHeld)) holdings) sps
-                            | otherwise -> [Order s (2 * buyQuantity)] ++ makeOrders (cash - (fromInteger (2 * buyQuantity)) * currentPrice, updateHoldings (s, (2 * buyQuantity)) holdings) sps
-                    --
-                False -> case calSlopeOfLine average180 > 0 of
-                        False -> case calSlopeOfLine selectedMaxPoints30 > 0 of
-                            True -> case sellPointIncrease of
-                                  True -> [Order s (-quantityHeld)] ++
-                                          makeOrders (cash + (fromInteger quantityHeld)*(head p), updateHoldings (s, -quantityHeld) holdings) sps
-                                  False -> []
-                            False -> case sellPointDecrease of
-                                  True -> [Order s (-quantityHeld)] ++
-                                          makeOrders (cash + (fromInteger quantityHeld)*(head p), updateHoldings (s, -quantityHeld) holdings) sps
-                                  False -> []
-                        True -> [Order s (-shortSellQ)] ++ makeOrders (cash + ((fromInteger (-shortSellQ)) * currentPrice), updateHoldings (s, (-shortSellQ)) holdings) sps
+                            | 1.1 * minPriceIn5days >= currentPrice -> myOrder buyQuantity
+                            | otherwise -> []
+                        False -> []
+            False -> case k30Max > 0 of
+                        True
+                            | k10 > 0 -> myOrder buyQuantity
+                            | otherwise -> case quantityHeld > 0 of
+                                True -> myOrder quantityHeld
+                                False -> []
+                        False -> case k180 < 0 of
+                                   -- short sell
+                            True
+                                | 0.9 * minPriceIn5days >= currentPrice -> myOrder sellQuantity
+                                | otherwise -> case quantityHeld < 0 of
+                                            True -> myOrder quantityHeld
+                                            False -> []
+                            False -> case quantityHeld >= 0 of
+                                True
+                                    | 0.9 * predictPrice <= currentPrice -> myOrder sellQuantity
+                                    | otherwise -> []
+                                False -> []
 
-            where
-                                        --shortSellAmount = floor(0.01 * cash / head p)
-            currentPrice = head $ historyPrices
-            historyPrices = snd $ head $ filter(\a -> fst a == s) history
-            selectedMinPoints30 = selectMinPoints $ selectNDays 30
-            selectedMinPoints100 = selectMinPoints $ selectNDays 100
-            average180 = map meanOfPoints $ groupEveryFive $ selectNDays 30
-            underValue = 0.7 * predictPrice >= currentPrice
-            overValue = 1.1 * predictPrice <= currentPrice
-            maxPriceIn300Days = maximum $ snd $ unzip $ take 300 (reverse listOfPoints)
-            quantityHeld
-                | s `notElem` map fst holdings = 0
-                | otherwise = fromIntegral (snd $ head $ filter (\z -> fst z == s) holdings)
-                                        -- [(1,p1),(2,p2),...,(n-1,pn-1),(n,pn)]
-            listOfPoints = zip [1..4502] (reverse historyPrices)
-                                        -- [(n-1,pn-1),...,(n-29, pn-29)]
-            selectNDays n = tail $ take (n+1) (reverse listOfPoints)
-            -- select30Days = tail $ take 31 (reverse listOfPoints)
-            selectedMaxPoints30 = selectMaxPoints $ selectNDays 30
+            where quantityHeld
+                       | s `notElem` map fst holdings = 0
+                       | otherwise = fromIntegral (snd $ head $ filter (\z -> fst z == s) holdings)
+                  currentPrice = head $ p
+                  -- made up a list of points: (days, corresponding price).
+                  listOfPoints = zip [1..] (reverse p)
+                  -- choose n points.
+                  selectNDays n = take n $ reverse listOfPoints
+                  -- let x = days, to calculate the corresponding price using simple linear regression;
+                  -- then compare the value we got with actual price;
+                  -- the predict function is to draw a regression line using the points given. ???
+                  predictPrice = predict (fromIntegral $ length $ p) selectedMaxPoints30
+                  selectedMinPoints30 = selectMinPoints $ selectNDays 30
+                  selectedMaxPoints30 = selectMaxPoints $ selectNDays 30
+                  -- the slope of the selected 6 points in 30 days, use only the minimum price every 5 points.
+                  k30Min = calSlopeOfLine selectedMinPoints30
+                  -- the slope of the selected 6 points in 30 days, use only the maximum price every 5 points.
+                  k30Max = calSlopeOfLine selectedMaxPoints30
+                  -- the slope of 60 points.
+                  k60 = calSlopeOfLine $ selectNDays 60
+                  -- the slope of 180 points
+                  k180 = calSlopeOfLine $ selectNDays 180
+                  -- the slope of recent 10 points
+                  k10 = calSlopeOfLine $ selectNDays 10
+                  minPriceIn5days = minimum $ take 5 p
+                  maxPriceIn5days = maximum $ take 5 p
+                  buyQuantity = floor (0.02 * cash / currentPrice)
+                  sellQuantity = (-floor (0.5 * (0.02 * cash / currentPrice)))
+                  -- update cash
+                  updateCash q = cash + (fromInteger q) * currentPrice -- fromInteger???
+                  -- makeOrders
+                  myOrder qty = [Order s qty] ++ makeOrders (updateCash qty, updateHoldings (s, qty) holdings) sps
 
-                                        -- pn
-            buyQuantity = floor (0.02 * cash / currentPrice)
-            sellQuantity = floor (0.5 * (0.02 * cash / currentPrice))
-            sellPointIncrease = predictPrice <= currentPrice
-            sellPointDecrease = 0.9 * predictPrice >= currentPrice
-            predictPrice = predict (fromIntegral $ length $ historyPrices) (selectNDays 30)
-            shortSellQ = floor(0.01 * cash / head p)
 
-                      -- currentWealth = calculateWealth (cash, holdings) history
-
-
-calculateWealth :: Portfolio -> [StockHistory] -> Cash
-calculateWealth (cash, stock) his = cash + sum (map currentValue stock)
-    where currentValue :: (Stock, Quantity) -> Cash
-          currentValue (sname, q) = getStockPrice sname his * fromIntegral q
-
-getStockPrice :: Stock -> [StockHistory] -> Price
-getStockPrice stock shis = head $ snd $ head $ filter (\z -> fst z == stock) shis
+-- Helper Functions
 
 -- update holdings in portfolio.
 updateHoldings :: Holding -> Holdings -> Holdings
@@ -97,7 +112,8 @@ groupEveryFive list = case list of
     [] -> []
     _ -> take 5 list : (groupEveryFive $ drop 5 list)
 
--- find out the point whose snd is the largest in the list
+-- find out the point that has the largest value of
+-- y(the second value in a tuple) in the list.
 findMaxPoint :: Ord a => [(a, a)] -> (a, a)
 findMaxPoint l = head $ filter (\z -> snd z == (maximum $ map snd l)) l
 
@@ -105,37 +121,37 @@ findMaxPoint l = head $ filter (\z -> snd z == (maximum $ map snd l)) l
 findMinPoint :: Ord a => [(a, a)] -> (a, a)
 findMinPoint l = head $ filter (\z -> snd z == (minimum $ map snd l)) l
 
--- check if k > 0, use all 30 points
---lineIsIncreasing :: (Ord a, Floating a, Fractional a) => [(a, a)] -> Bool
---lineIsIncreasing pps
-  --  | (calSlopeOfLine pps) > 0   = True
-   -- =| (calSlopeOfLine pps) <= 0  = False
- -- =| otherwise = error "Won't happen."
-
 -- predict x, x is the current day.
 predict :: (Fractional a, Floating a) => a -> [(a, a)] -> a
 predict day points = (calSlopeOfLine points) * day + (calculateB points)
 
+-- calculate the slope of the regression line.
 calSlopeOfLine :: (Fractional a, Floating a) => [(a, a)] -> a
 calSlopeOfLine pts = (correlation pts) * dy / dx
     where (dx, dy) = sdOfPoints pts
 
+-- calculate the value of b in equation y = kx + b.
 calculateB :: (Fractional a, Floating a) => [(a, a)] -> a
 calculateB ptss = meany - (calSlopeOfLine ptss) * meanx
     where (meanx, meany) = meanOfPoints ptss
 
+-- calculate the mean of a given list.
 mean :: Fractional a => [a] -> a
 mean xs = (sum xs) / fromIntegral (length xs)
 
+-- calculate the mean of all x and all y.
 meanOfPoints :: Fractional a => [(a, a)] -> (a, a)
 meanOfPoints ys = (mean (fst (unzip ys)), mean (snd (unzip ys)))
 
+-- calculate the standard deviation of a list.
 staDeviation :: Floating a => [a] -> a
 staDeviation x = sqrt  (sum (map (\z -> (z - mean x)**2) x)) / fromIntegral (length x)
 
+-- calculate the standard deviation of all x and all y.
 sdOfPoints :: Floating a => [(a, a)] -> (a, a)
 sdOfPoints lst = (staDeviation (fst (unzip lst)), staDeviation (snd (unzip lst)))
 
+-- find out the relation between these x and y using the deviation score formula.
 correlation :: Floating a => [(a, a)] -> a
 correlation list = xy / sqrt (xx * yy)
         where xy = sum (map (\z -> fst z * snd z) list)
