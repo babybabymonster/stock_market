@@ -53,7 +53,6 @@ import Data.List
 
 
 
-
 prop_findMaxPoint :: (Num a, Eq a, Ord a) => [(a, a)] -> Bool
 prop_findMaxPoint [] = (findMaxPoint []) == (0,0)
 prop_findMaxPoint flist = (snd $ findMaxPoint flist) == (last $ sort $ map snd flist)
