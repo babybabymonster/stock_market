@@ -4,10 +4,12 @@ import Types
 import Data.List
 
 -- | quickCheck
--- prop> prop_groupEveryFive
 -- prop> prop_findMaxPoint
 -- prop> prop_findMinPoint
 
+-- | group5
+-- >>> group5 [(1,2),(2,2),(3,2),(1,7),(0,9),(8,0),(12,0)]
+-- [[(1,2),(2,2),(3,2),(1,7),(0,9)],[(2,2),(3,2),(1,7),(0,9),(8,0)],[(3,2),(1,7),(0,9),(8,0),(12,0)]]
 -- | selectMaxPoints
 -- >>> selectMaxPoints [(2,4),(0,100),(200,0),(-10,-300)]
 -- [(0,100)]
@@ -49,8 +51,7 @@ import Data.List
 -- (49.95,0.25)
 
 
-prop_groupEveryFive :: Eq a => [a] -> Bool
-prop_groupEveryFive glist = glist == (foldl (++) [] $ groupEveryFive glist)
+
 
 prop_findMaxPoint :: (Num a, Eq a, Ord a) => [(a, a)] -> Bool
 prop_findMaxPoint [] = (findMaxPoint []) == (0,0)
@@ -67,7 +68,7 @@ prop_findMinPoint fmlist = (snd $ findMinPoint fmlist) == (head $ sort $ map snd
 makeOrders :: Portfolio -> [StockHistory] -> [Order]
 makeOrders port@(cash, holdings) history = case history of
     [] -> []
-    (s,p):sps -> case quantityHeld < 0 of
+    (s,p):sps -> case quantityHeld < 0 of -- check if quantityHeld is negative, if so, then find point to buy.
         True
             | 0.9 * minPriceIn5days >= currentPrice -> myOrder (-quantityHeld)
             | otherwise -> skipThisStock
@@ -75,7 +76,7 @@ makeOrders port@(cash, holdings) history = case history of
                 True -> []
                 -- check the trend of s stock in 30 days, using the minimum price every 5 days
                 -- instead of average price every 5 days is to make sure the general trend of
-                -- this stock in 30 days is increasing.
+                -- this stock in 30 days is more likely to increase.
                 False -> case k30Min > 0 of
                     True
                         | k60 > 0 -> case k180 > 0 of
@@ -85,12 +86,12 @@ makeOrders port@(cash, holdings) history = case history of
                              -- find a relatively lower price to buy.
                                 minPriceIn5days >= currentPrice of
                                 True-> myOrder $ 2 * buyQuantity
-                                False
+                                False -- if quantityHeld is not 0, then find the suitable point to sell.
                                     | quantityHeld > 0 -> case
                                           -- find a relatively higher price to sell
                                            maxPriceIn5days <= currentPrice of
                                            True -> myOrder sellQuantity
-                                           False -> myOrder buyQuantity
+                                           False -> skipThisStock
                                     | otherwise -> skipThisStock
                             -- s stock is increasing in 30 and 60 days, but not in 180 days, this stock
                             -- starts to climb back.
@@ -99,7 +100,7 @@ makeOrders port@(cash, holdings) history = case history of
                                 False
                                     | maxPriceIn5days < currentPrice -> myOrder sellQuantity
                                     | otherwise -> skipThisStock
-                        -- k60 <= 0, the stock starts to climb back;
+                        -- k60 <= 0, but k30Min > 0, the stock starts to climb back;
                         -- check the slope of recent 10 days to check whether it is safe to buy.
                         | otherwise -> case k10 > 0 of
                                 True
@@ -107,7 +108,8 @@ makeOrders port@(cash, holdings) history = case history of
                                     | otherwise -> skipThisStock
                                 False -> skipThisStock
                     -- k30Min < 0, then use maximum price every 5 days,
-                    -- if this regression line is decreasing, then this stock must decrease.
+                    -- if this regression line is decreasing, then the general
+                    -- trend of this stock must decrease in 30 days.
                     False -> case k30Max > 0 of
                                 True
                                     | k10 > 0 -> myOrder buyQuantity
@@ -126,9 +128,9 @@ makeOrders port@(cash, holdings) history = case history of
                                         -- if we still have this stock, then find a
                                         -- relatively higher price to sell.
                                         -- if not, then skip it.
-                                    False -> case quantityHeld >= 0 of
+                                    False -> case quantityHeld > 0 of
                                         True
-                                            | 0.9 * predictPrice <= currentPrice -> myOrder sellQuantity
+                                            | 0.9 * predictPrice <= currentPrice -> myOrder (-quantityHeld)
                                             | otherwise -> skipThisStock
                                         False -> skipThisStock
 
@@ -179,16 +181,23 @@ updateHoldings (stock, quantity) hold = case hold of
 
 -- select the point that has the largest y in every 5 points.
 selectMaxPoints :: (Num a, Ord a) => [(a, a)] -> [(a, a)]
-selectMaxPoints opts = map findMaxPoint $ groupEveryFive opts
+selectMaxPoints opts = map findMaxPoint $ group5 opts
 
 selectMinPoints :: (Num a, Ord a) => [(a, a)] -> [(a, a)]
-selectMinPoints opts = map findMinPoint $ groupEveryFive opts
+selectMinPoints opts = map findMinPoint $ group5 opts
 
 -- group every five points in a list of 30 points.
-groupEveryFive :: [a] -> [[a]]
-groupEveryFive list = case list of
-    [] -> []
-    _ -> take 5 list : (groupEveryFive $ drop 5 list)
+--groupEveryFive :: [a] -> [[a]]
+--groupEveryFive list = case list of
+  --  [] -> []
+   -- _ -> take 5 list : (groupEveryFive $ drop 5 list)
+
+-- group five days together i.e day one to day five, day two to day six...
+group5 :: [(a, a)] -> [[(a, a)]]
+group5 list = case (fromIntegral (length list)) < 5 of
+        True -> []
+        False -> (take 5 list) : (group5 $ tail list)
+
 
 -- find out the point that has the largest value of
 -- y(the second value in a tuple) in the list.
